@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   MapContainer,
   TileLayer,
@@ -8,6 +8,9 @@ import {
 } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+
+const STORAGE_KEY = 'dogwalk_saved_walks'
+const DRAFT_KEY = 'dogwalk_current_walk'
 
 const userIcon = L.divIcon({
   className: '',
@@ -56,12 +59,114 @@ function distanceInMeters(a, b) {
   return 2 * R * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h))
 }
 
+function formatDuration(seconds) {
+  const safe = Math.max(0, seconds || 0)
+  const hrs = Math.floor(safe / 3600)
+  const mins = Math.floor((safe % 3600) / 60)
+  const secs = safe % 60
+
+  if (hrs > 0) return `${hrs}h ${mins}m ${secs}s`
+  return `${mins}m ${secs}s`
+}
+
+function formatDate(dateString) {
+  if (!dateString) return ''
+  return new Date(dateString).toLocaleString('fr-FR', {
+    day: '2-digit',
+    month: 'long',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+function getSavedWalks() {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]')
+  } catch {
+    return []
+  }
+}
+
+function saveWalk(walk) {
+  const walks = getSavedWalks()
+  walks.unshift(walk)
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(walks))
+}
+
+function saveDraftWalk(walk) {
+  localStorage.setItem(DRAFT_KEY, JSON.stringify(walk))
+}
+
+function getDraftWalk() {
+  try {
+    return JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null')
+  } catch {
+    return null
+  }
+}
+
+function clearDraftWalk() {
+  localStorage.removeItem(DRAFT_KEY)
+}
+
+function deleteWalkById(id) {
+  const walks = getSavedWalks().filter((walk) => walk.id !== id)
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(walks))
+  return walks
+}
+
 function App() {
   const [position, setPosition] = useState(null)
   const [path, setPath] = useState([])
   const [isTracking, setIsTracking] = useState(false)
   const [error, setError] = useState('')
+  const [savedWalks, setSavedWalks] = useState([])
+  const [currentWalk, setCurrentWalk] = useState(null)
+  const [selectedWalkId, setSelectedWalkId] = useState(null)
+
   const watchIdRef = useRef(null)
+  const timerRef = useRef(null)
+
+  useEffect(() => {
+    const walks = getSavedWalks()
+    setSavedWalks(walks)
+
+    const draft = getDraftWalk()
+    if (draft) {
+      setCurrentWalk(draft)
+      setPath(draft.points || [])
+      if (draft.points?.length) {
+        setPosition(draft.points[draft.points.length - 1])
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current)
+      }
+      if (timerRef.current !== null) {
+        clearInterval(timerRef.current)
+      }
+    }
+  }, [])
+
+  const selectedWalk =
+    savedWalks.find((walk) => walk.id === selectedWalkId) || null
+
+  const displayedPath =
+    isTracking && currentWalk?.points?.length
+      ? currentWalk.points
+      : selectedWalk?.points || path
+
+  const totalDistanceMeters = useMemo(() => {
+    return savedWalks.reduce((sum, walk) => sum + (walk.distanceMeters || 0), 0)
+  }, [savedWalks])
+
+  const totalDurationSec = useMemo(() => {
+    return savedWalks.reduce((sum, walk) => sum + (walk.durationSec || 0), 0)
+  }, [savedWalks])
 
   const startTracking = () => {
     if (!navigator.geolocation) {
@@ -74,31 +179,103 @@ function App() {
     }
 
     setError('')
+    setSelectedWalkId(null)
+
+    const startedAt = new Date().toISOString()
+
+    const newWalk = {
+      id: crypto.randomUUID(),
+      startedAt,
+      endedAt: null,
+      durationSec: 0,
+      distanceMeters: 0,
+      points: [],
+    }
+
+    setCurrentWalk(newWalk)
+    setPath([])
     setIsTracking(true)
+
+    timerRef.current = window.setInterval(() => {
+      setCurrentWalk((prev) => {
+        if (!prev) return prev
+
+        const durationSec = Math.floor(
+          (Date.now() - new Date(prev.startedAt).getTime()) / 1000
+        )
+
+        const updatedWalk = {
+          ...prev,
+          durationSec,
+        }
+
+        saveDraftWalk(updatedWalk)
+        return updatedWalk
+      })
+    }, 1000)
 
     watchIdRef.current = navigator.geolocation.watchPosition(
       (pos) => {
-        const { latitude, longitude } = pos.coords
+        const { latitude, longitude, accuracy } = pos.coords
         const newPoint = [latitude, longitude]
 
         setPosition(newPoint)
 
-        setPath((prev) => {
-          if (prev.length === 0) return [newPoint]
+        setCurrentWalk((prev) => {
+          if (!prev) return prev
 
-          const lastPoint = prev[prev.length - 1]
-          const distance = distanceInMeters(lastPoint, newPoint)
+          if (accuracy > 50) {
+            return prev
+          }
 
-          if (distance < 5) return prev
+          const previousPoint = prev.points[prev.points.length - 1]
 
-          return [...prev, newPoint]
+          if (!previousPoint) {
+            const updatedWalk = {
+              ...prev,
+              points: [newPoint],
+            }
+            setPath([newPoint])
+            saveDraftWalk(updatedWalk)
+            return updatedWalk
+          }
+
+          const addedDistance = distanceInMeters(previousPoint, newPoint)
+
+          if (addedDistance < 5) {
+            return prev
+          }
+
+          if (addedDistance > 100) {
+            return prev
+          }
+
+          const updatedPoints = [...prev.points, newPoint]
+          const updatedWalk = {
+            ...prev,
+            points: updatedPoints,
+            distanceMeters: prev.distanceMeters + addedDistance,
+          }
+
+          setPath(updatedPoints)
+          saveDraftWalk(updatedWalk)
+          return updatedWalk
         })
       },
       (err) => {
         console.error(err)
         setError("Impossible d'obtenir ta position.")
         setIsTracking(false)
-        watchIdRef.current = null
+
+        if (watchIdRef.current !== null) {
+          navigator.geolocation.clearWatch(watchIdRef.current)
+          watchIdRef.current = null
+        }
+
+        if (timerRef.current !== null) {
+          clearInterval(timerRef.current)
+          timerRef.current = null
+        }
       },
       {
         enableHighAccuracy: true,
@@ -113,21 +290,61 @@ function App() {
       navigator.geolocation.clearWatch(watchIdRef.current)
       watchIdRef.current = null
     }
+
+    if (timerRef.current !== null) {
+      clearInterval(timerRef.current)
+      timerRef.current = null
+    }
+
     setIsTracking(false)
+
+    setCurrentWalk((prev) => {
+      if (!prev) return null
+
+      const finishedWalk = {
+        ...prev,
+        endedAt: new Date().toISOString(),
+      }
+
+      if (finishedWalk.points.length > 0) {
+        saveWalk(finishedWalk)
+        const updatedWalks = getSavedWalks()
+        setSavedWalks(updatedWalks)
+        setSelectedWalkId(finishedWalk.id)
+      }
+
+      clearDraftWalk()
+      return null
+    })
   }
 
   const resetTrack = () => {
+    if (isTracking) return
     setPath([])
+    setPosition(null)
     setError('')
+    setCurrentWalk(null)
+    clearDraftWalk()
   }
 
-  useEffect(() => {
-    return () => {
-      if (watchIdRef.current !== null) {
-        navigator.geolocation.clearWatch(watchIdRef.current)
-      }
+  const openWalk = (walk) => {
+    setSelectedWalkId(walk.id)
+    setPath(walk.points || [])
+    if (walk.points?.length) {
+      setPosition(walk.points[walk.points.length - 1])
     }
-  }, [])
+  }
+
+  const deleteWalk = (id) => {
+    if (isTracking) return
+    const updatedWalks = deleteWalkById(id)
+    setSavedWalks(updatedWalks)
+
+    if (selectedWalkId === id) {
+      setSelectedWalkId(null)
+      setPath([])
+    }
+  }
 
   return (
     <div style={{ height: '100vh', width: '100%', position: 'relative' }}>
@@ -137,40 +354,125 @@ function App() {
           top: 12,
           left: 12,
           zIndex: 1000,
+          width: 'min(360px, calc(100% - 24px))',
           display: 'flex',
-          gap: '8px',
-          background: 'rgba(255,255,255,0.95)',
-          padding: '10px',
-          borderRadius: '12px',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+          flexDirection: 'column',
+          gap: '10px',
         }}
       >
-        <button onClick={startTracking} disabled={isTracking}>
-          Démarrer
-        </button>
-        <button onClick={stopTracking} disabled={!isTracking}>
-          Stop
-        </button>
-        <button onClick={resetTrack}>Réinitialiser</button>
-      </div>
-
-      {error && (
         <div
           style={{
-            position: 'absolute',
-            top: 70,
-            left: 12,
-            zIndex: 1000,
-            background: 'rgba(255,255,255,0.95)',
-            padding: '10px 12px',
-            borderRadius: '12px',
+            background: 'rgba(255,255,255,0.96)',
+            padding: '12px',
+            borderRadius: '14px',
             boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-            maxWidth: '280px',
           }}
         >
-          {error}
+          <div style={{ fontWeight: 700, marginBottom: '8px' }}>
+            Balade en cours
+          </div>
+
+          <div style={{ fontSize: '14px', marginBottom: '4px' }}>
+            <strong>Durée :</strong>{' '}
+            {currentWalk ? formatDuration(currentWalk.durationSec) : '0m 0s'}
+          </div>
+
+          <div style={{ fontSize: '14px', marginBottom: '10px' }}>
+            <strong>Distance :</strong>{' '}
+            {currentWalk
+              ? (currentWalk.distanceMeters / 1000).toFixed(2)
+              : '0.00'}{' '}
+            km
+          </div>
+
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <button onClick={startTracking} disabled={isTracking}>
+              Démarrer
+            </button>
+            <button onClick={stopTracking} disabled={!isTracking}>
+              Stop
+            </button>
+            <button onClick={resetTrack} disabled={isTracking}>
+              Réinitialiser
+            </button>
+          </div>
         </div>
-      )}
+
+        {error && (
+          <div
+            style={{
+              background: 'rgba(255,255,255,0.96)',
+              padding: '10px 12px',
+              borderRadius: '12px',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+            }}
+          >
+            {error}
+          </div>
+        )}
+
+        <div
+          style={{
+            background: 'rgba(255,255,255,0.96)',
+            padding: '12px',
+            borderRadius: '14px',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+          }}
+        >
+          <div style={{ fontWeight: 700, marginBottom: '8px' }}>Stats</div>
+          <div style={{ fontSize: '14px', marginBottom: '4px' }}>
+            <strong>Nombre de balades :</strong> {savedWalks.length}
+          </div>
+          <div style={{ fontSize: '14px', marginBottom: '4px' }}>
+            <strong>Distance totale :</strong>{' '}
+            {(totalDistanceMeters / 1000).toFixed(2)} km
+          </div>
+          <div style={{ fontSize: '14px' }}>
+            <strong>Temps total :</strong> {formatDuration(totalDurationSec)}
+          </div>
+        </div>
+
+        <div
+          style={{
+            background: 'rgba(255,255,255,0.96)',
+            padding: '12px',
+            borderRadius: '14px',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+            maxHeight: '240px',
+            overflowY: 'auto',
+          }}
+        >
+          <div style={{ fontWeight: 700, marginBottom: '8px' }}>Historique</div>
+
+          {savedWalks.length === 0 ? (
+            <div style={{ fontSize: '14px' }}>
+              Aucune balade enregistrée pour le moment.
+            </div>
+          ) : (
+            savedWalks.map((walk) => (
+              <div
+                key={walk.id}
+                style={{
+                  borderBottom: '1px solid #e5e7eb',
+                  padding: '10px 0',
+                }}
+              >
+                <div style={{ fontSize: '14px', fontWeight: 600 }}>
+                  {formatDate(walk.startedAt)}
+                </div>
+                <div style={{ fontSize: '13px', margin: '4px 0 8px' }}>
+                  {formatDuration(walk.durationSec)} —{' '}
+                  {(walk.distanceMeters / 1000).toFixed(2)} km
+                </div>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <button onClick={() => openWalk(walk)}>Voir</button>
+                  <button onClick={() => deleteWalk(walk.id)}>Supprimer</button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
 
       <MapContainer
         center={[48.8566, 2.3522]}
@@ -186,9 +488,9 @@ function App() {
 
         {position && <Marker position={position} icon={userIcon} />}
 
-        {path.length > 1 && (
+        {displayedPath.length > 1 && (
           <Polyline
-            positions={path}
+            positions={displayedPath}
             pathOptions={{
               color: '#2563eb',
               weight: 5,
