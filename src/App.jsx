@@ -16,16 +16,16 @@ const userIcon = L.divIcon({
   className: '',
   html: `
     <div style="
-      width: 16px;
-      height: 16px;
+      width: 18px;
+      height: 18px;
       background: #2563eb;
       border: 3px solid white;
       border-radius: 50%;
-      box-shadow: 0 0 0 6px rgba(37, 99, 235, 0.20);
+      box-shadow: 0 0 0 8px rgba(37, 99, 235, 0.18);
     "></div>
   `,
-  iconSize: [16, 16],
-  iconAnchor: [8, 8],
+  iconSize: [18, 18],
+  iconAnchor: [9, 9],
 })
 
 function RecenterMap({ position, isTracking }) {
@@ -123,6 +123,7 @@ function App() {
   const [savedWalks, setSavedWalks] = useState([])
   const [currentWalk, setCurrentWalk] = useState(null)
   const [selectedWalkId, setSelectedWalkId] = useState(null)
+  const [showHistory, setShowHistory] = useState(false)
 
   const watchIdRef = useRef(null)
   const timerRef = useRef(null)
@@ -174,12 +175,11 @@ function App() {
       return
     }
 
-    if (watchIdRef.current !== null) {
-      return
-    }
+    if (watchIdRef.current !== null) return
 
     setError('')
     setSelectedWalkId(null)
+    setShowHistory(false)
 
     const startedAt = new Date().toISOString()
 
@@ -224,9 +224,7 @@ function App() {
         setCurrentWalk((prev) => {
           if (!prev) return prev
 
-          if (accuracy > 50) {
-            return prev
-          }
+          if (accuracy > 50) return prev
 
           const previousPoint = prev.points[prev.points.length - 1]
 
@@ -242,13 +240,8 @@ function App() {
 
           const addedDistance = distanceInMeters(previousPoint, newPoint)
 
-          if (addedDistance < 5) {
-            return prev
-          }
-
-          if (addedDistance > 100) {
-            return prev
-          }
+          if (addedDistance < 5) return prev
+          if (addedDistance > 100) return prev
 
           const updatedPoints = [...prev.points, newPoint]
           const updatedWalk = {
@@ -325,6 +318,7 @@ function App() {
     setError('')
     setCurrentWalk(null)
     clearDraftWalk()
+    setSelectedWalkId(null)
   }
 
   const openWalk = (walk) => {
@@ -333,6 +327,7 @@ function App() {
     if (walk.points?.length) {
       setPosition(walk.points[walk.points.length - 1])
     }
+    setShowHistory(false)
   }
 
   const deleteWalk = (id) => {
@@ -346,106 +341,158 @@ function App() {
     }
   }
 
+  const mainDistanceKm = ((currentWalk?.distanceMeters || 0) / 1000).toFixed(2)
+  const selectedDistanceKm = ((selectedWalk?.distanceMeters || 0) / 1000).toFixed(2)
+
+  const glassCard = {
+    background: 'rgba(255,255,255,0.88)',
+    backdropFilter: 'blur(14px)',
+    WebkitBackdropFilter: 'blur(14px)',
+    border: '1px solid rgba(255,255,255,0.55)',
+    boxShadow: '0 10px 30px rgba(15, 23, 42, 0.16)',
+    borderRadius: '22px',
+  }
+
+  const smallButton = {
+    border: 'none',
+    borderRadius: '14px',
+    padding: '10px 14px',
+    fontSize: '14px',
+    fontWeight: 600,
+    background: '#eef2ff',
+    color: '#1e3a8a',
+    cursor: 'pointer',
+  }
+
   return (
-    <div style={{ height: '100vh', width: '100%', position: 'relative' }}>
+    <div style={{ height: '100vh', width: '100%', position: 'relative', overflow: 'hidden' }}>
       <div
         style={{
           position: 'absolute',
-          top: 12,
-          left: 12,
+          top: 14,
+          left: 14,
+          right: 14,
           zIndex: 1000,
-          width: 'min(360px, calc(100% - 24px))',
           display: 'flex',
-          flexDirection: 'column',
-          gap: '10px',
+          justifyContent: 'space-between',
+          alignItems: 'flex-start',
+          pointerEvents: 'none',
         }}
       >
         <div
           style={{
-            background: 'rgba(255,255,255,0.96)',
-            padding: '12px',
-            borderRadius: '14px',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+            ...glassCard,
+            pointerEvents: 'auto',
+            padding: '10px 14px',
+            maxWidth: '240px',
           }}
         >
-          <div style={{ fontWeight: 700, marginBottom: '8px' }}>
-            Balade en cours
+          <div style={{ fontSize: '12px', color: '#475569', marginBottom: '4px' }}>
+            Dog Walk Map
           </div>
-
-          <div style={{ fontSize: '14px', marginBottom: '4px' }}>
-            <strong>Durée :</strong>{' '}
-            {currentWalk ? formatDuration(currentWalk.durationSec) : '0m 0s'}
-          </div>
-
-          <div style={{ fontSize: '14px', marginBottom: '10px' }}>
-            <strong>Distance :</strong>{' '}
-            {currentWalk
-              ? (currentWalk.distanceMeters / 1000).toFixed(2)
-              : '0.00'}{' '}
-            km
-          </div>
-
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-            <button onClick={startTracking} disabled={isTracking}>
-              Démarrer
-            </button>
-            <button onClick={stopTracking} disabled={!isTracking}>
-              Stop
-            </button>
-            <button onClick={resetTrack} disabled={isTracking}>
-              Réinitialiser
-            </button>
+          <div style={{ fontSize: '18px', fontWeight: 700, color: '#0f172a' }}>
+            {isTracking ? 'Balade en cours' : selectedWalk ? 'Balade enregistrée' : 'Prêt à partir'}
           </div>
         </div>
 
-        {error && (
+        <button
+          onClick={() => setShowHistory((prev) => !prev)}
+          style={{
+            ...glassCard,
+            pointerEvents: 'auto',
+            border: 'none',
+            padding: '12px 16px',
+            fontSize: '14px',
+            fontWeight: 700,
+            color: '#0f172a',
+            cursor: 'pointer',
+          }}
+        >
+          {showHistory ? 'Fermer' : `Historique (${savedWalks.length})`}
+        </button>
+      </div>
+
+      {showHistory && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 74,
+            left: 14,
+            right: 14,
+            zIndex: 1000,
+            maxHeight: '42vh',
+            overflowY: 'auto',
+            ...glassCard,
+            padding: '16px',
+          }}
+        >
           <div
             style={{
-              background: 'rgba(255,255,255,0.96)',
-              padding: '10px 12px',
-              borderRadius: '12px',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+              fontSize: '18px',
+              fontWeight: 700,
+              color: '#0f172a',
+              marginBottom: '14px',
             }}
           >
-            {error}
+            Historique
           </div>
-        )}
 
-        <div
-          style={{
-            background: 'rgba(255,255,255,0.96)',
-            padding: '12px',
-            borderRadius: '14px',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-          }}
-        >
-          <div style={{ fontWeight: 700, marginBottom: '8px' }}>Stats</div>
-          <div style={{ fontSize: '14px', marginBottom: '4px' }}>
-            <strong>Nombre de balades :</strong> {savedWalks.length}
-          </div>
-          <div style={{ fontSize: '14px', marginBottom: '4px' }}>
-            <strong>Distance totale :</strong>{' '}
-            {(totalDistanceMeters / 1000).toFixed(2)} km
-          </div>
-          <div style={{ fontSize: '14px' }}>
-            <strong>Temps total :</strong> {formatDuration(totalDurationSec)}
-          </div>
-        </div>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+              gap: '10px',
+              marginBottom: '14px',
+            }}
+          >
+            <div
+              style={{
+                background: 'rgba(248,250,252,0.95)',
+                borderRadius: '16px',
+                padding: '12px',
+              }}
+            >
+              <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>
+                Balades
+              </div>
+              <div style={{ fontSize: '20px', fontWeight: 700, color: '#0f172a' }}>
+                {savedWalks.length}
+              </div>
+            </div>
 
-        <div
-          style={{
-            background: 'rgba(255,255,255,0.96)',
-            padding: '12px',
-            borderRadius: '14px',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-            maxHeight: '240px',
-            overflowY: 'auto',
-          }}
-        >
-          <div style={{ fontWeight: 700, marginBottom: '8px' }}>Historique</div>
+            <div
+              style={{
+                background: 'rgba(248,250,252,0.95)',
+                borderRadius: '16px',
+                padding: '12px',
+              }}
+            >
+              <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>
+                Distance totale
+              </div>
+              <div style={{ fontSize: '20px', fontWeight: 700, color: '#0f172a' }}>
+                {(totalDistanceMeters / 1000).toFixed(2)} km
+              </div>
+            </div>
+
+            <div
+              style={{
+                background: 'rgba(248,250,252,0.95)',
+                borderRadius: '16px',
+                padding: '12px',
+              }}
+            >
+              <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>
+                Temps total
+              </div>
+              <div style={{ fontSize: '20px', fontWeight: 700, color: '#0f172a' }}>
+                {formatDuration(totalDurationSec)}
+              </div>
+            </div>
+          </div>
 
           {savedWalks.length === 0 ? (
-            <div style={{ fontSize: '14px' }}>
+            <div style={{ color: '#475569', fontSize: '14px' }}>
               Aucune balade enregistrée pour le moment.
             </div>
           ) : (
@@ -453,23 +500,211 @@ function App() {
               <div
                 key={walk.id}
                 style={{
-                  borderBottom: '1px solid #e5e7eb',
-                  padding: '10px 0',
+                  background: 'rgba(255,255,255,0.7)',
+                  border: '1px solid rgba(226,232,240,0.9)',
+                  borderRadius: '18px',
+                  padding: '14px',
+                  marginBottom: '10px',
                 }}
               >
-                <div style={{ fontSize: '14px', fontWeight: 600 }}>
-                  {formatDate(walk.startedAt)}
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    gap: '12px',
+                    alignItems: 'center',
+                    marginBottom: '8px',
+                  }}
+                >
+                  <div style={{ fontWeight: 700, color: '#0f172a', fontSize: '14px' }}>
+                    {formatDate(walk.startedAt)}
+                  </div>
+                  {selectedWalkId === walk.id && !isTracking && (
+                    <div
+                      style={{
+                        fontSize: '12px',
+                        fontWeight: 700,
+                        color: '#1d4ed8',
+                        background: '#dbeafe',
+                        padding: '6px 10px',
+                        borderRadius: '999px',
+                      }}
+                    >
+                      affichée
+                    </div>
+                  )}
                 </div>
-                <div style={{ fontSize: '13px', margin: '4px 0 8px' }}>
-                  {formatDuration(walk.durationSec)} —{' '}
-                  {(walk.distanceMeters / 1000).toFixed(2)} km
+
+                <div style={{ fontSize: '13px', color: '#475569', marginBottom: '10px' }}>
+                  {formatDuration(walk.durationSec)} — {(walk.distanceMeters / 1000).toFixed(2)} km
                 </div>
+
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                  <button onClick={() => openWalk(walk)}>Voir</button>
-                  <button onClick={() => deleteWalk(walk.id)}>Supprimer</button>
+                  <button onClick={() => openWalk(walk)} style={smallButton}>
+                    Voir le tracé
+                  </button>
+                  <button
+                    onClick={() => deleteWalk(walk.id)}
+                    style={{
+                      ...smallButton,
+                      background: '#fef2f2',
+                      color: '#b91c1c',
+                    }}
+                  >
+                    Supprimer
+                  </button>
                 </div>
               </div>
             ))
+          )}
+        </div>
+      )}
+
+      {error && (
+        <div
+          style={{
+            position: 'absolute',
+            left: 14,
+            right: 14,
+            bottom: 170,
+            zIndex: 1000,
+            ...glassCard,
+            padding: '14px 16px',
+            color: '#991b1b',
+            background: 'rgba(254,242,242,0.93)',
+            border: '1px solid rgba(252,165,165,0.6)',
+          }}
+        >
+          {error}
+        </div>
+      )}
+
+      <div
+        style={{
+          position: 'absolute',
+          left: 14,
+          right: 14,
+          bottom: 14,
+          zIndex: 1000,
+          pointerEvents: 'none',
+        }}
+      >
+        <div
+          style={{
+            ...glassCard,
+            pointerEvents: 'auto',
+            padding: '16px',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              gap: '12px',
+              alignItems: 'flex-start',
+              marginBottom: '14px',
+            }}
+          >
+            <div>
+              <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '6px' }}>
+                {isTracking ? 'Session active' : selectedWalk ? 'Dernière balade affichée' : 'Nouvelle sortie'}
+              </div>
+
+              <div style={{ fontSize: '28px', fontWeight: 800, color: '#0f172a', lineHeight: 1 }}>
+                {isTracking
+                  ? formatDuration(currentWalk?.durationSec || 0)
+                  : selectedWalk
+                  ? formatDuration(selectedWalk.durationSec || 0)
+                  : '0m 0s'}
+              </div>
+            </div>
+
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '6px' }}>
+                Distance
+              </div>
+              <div style={{ fontSize: '28px', fontWeight: 800, color: '#0f172a', lineHeight: 1 }}>
+                {isTracking ? mainDistanceKm : selectedWalk ? selectedDistanceKm : '0.00'} km
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: '10px', marginBottom: !isTracking ? '10px' : 0 }}>
+            {!isTracking ? (
+              <button
+                onClick={startTracking}
+                style={{
+                  width: '100%',
+                  border: 'none',
+                  borderRadius: '18px',
+                  padding: '18px',
+                  fontSize: '17px',
+                  fontWeight: 800,
+                  background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
+                  color: 'white',
+                  boxShadow: '0 10px 24px rgba(37, 99, 235, 0.35)',
+                  cursor: 'pointer',
+                }}
+              >
+                Démarrer la balade
+              </button>
+            ) : (
+              <button
+                onClick={stopTracking}
+                style={{
+                  width: '100%',
+                  border: 'none',
+                  borderRadius: '18px',
+                  padding: '18px',
+                  fontSize: '17px',
+                  fontWeight: 800,
+                  background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                  color: 'white',
+                  boxShadow: '0 10px 24px rgba(239, 68, 68, 0.28)',
+                  cursor: 'pointer',
+                }}
+              >
+                Arrêter
+              </button>
+            )}
+          </div>
+
+          {!isTracking && (
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button
+                onClick={resetTrack}
+                style={{
+                  flex: 1,
+                  border: 'none',
+                  borderRadius: '14px',
+                  padding: '13px',
+                  fontSize: '14px',
+                  fontWeight: 700,
+                  background: '#f8fafc',
+                  color: '#334155',
+                  cursor: 'pointer',
+                }}
+              >
+                Réinitialiser
+              </button>
+
+              <button
+                onClick={() => setShowHistory((prev) => !prev)}
+                style={{
+                  flex: 1,
+                  border: 'none',
+                  borderRadius: '14px',
+                  padding: '13px',
+                  fontSize: '14px',
+                  fontWeight: 700,
+                  background: '#eff6ff',
+                  color: '#1d4ed8',
+                  cursor: 'pointer',
+                }}
+              >
+                {showHistory ? 'Masquer l’historique' : 'Voir l’historique'}
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -478,6 +713,7 @@ function App() {
         center={[48.8566, 2.3522]}
         zoom={14}
         style={{ height: '100vh', width: '100%' }}
+        zoomControl={false}
       >
         <TileLayer
           attribution="&copy; OpenStreetMap contributors"
@@ -493,8 +729,10 @@ function App() {
             positions={displayedPath}
             pathOptions={{
               color: '#2563eb',
-              weight: 5,
-              opacity: 0.85,
+              weight: 6,
+              opacity: 0.95,
+              lineCap: 'round',
+              lineJoin: 'round',
             }}
           />
         )}
