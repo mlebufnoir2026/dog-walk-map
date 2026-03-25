@@ -27,9 +27,17 @@ const COLORS = {
   dangerSoft: '#fef2f2',
   dangerText: '#991b1b',
   line: '#fc4c02',
+  dark: '#111111',
 }
 
 const FONT_FAMILY = "'Sometype Mono', monospace"
+
+const WALK_TYPES = [
+  { id: 'promenade-courte', label: 'Promenade courte' },
+  { id: 'sortie-longue', label: 'Sortie longue' },
+  { id: 'cafe-terrasse', label: 'Café / terrasse' },
+  { id: 'parc', label: 'Parc' },
+]
 
 const userIcon = L.divIcon({
   className: '',
@@ -79,7 +87,7 @@ function distanceInMeters(a, b) {
 }
 
 function formatDuration(seconds) {
-  const safe = Math.max(0, seconds || 0)
+  const safe = Math.max(0, Math.floor(seconds || 0))
   const hrs = Math.floor(safe / 3600)
   const mins = Math.floor((safe % 3600) / 60)
   const secs = safe % 60
@@ -96,6 +104,23 @@ function formatDate(dateString) {
     hour: '2-digit',
     minute: '2-digit',
   })
+}
+
+function getMomentOfDay(dateString) {
+  const hour = new Date(dateString).getHours()
+
+  if (hour < 12) return 'Matin'
+  if (hour < 18) return 'Après-midi'
+  return 'Soir'
+}
+
+function getWalkTypeLabel(typeId) {
+  return WALK_TYPES.find((type) => type.id === typeId)?.label || 'Promenade'
+}
+
+function formatSpeed(speedMps) {
+  const kmh = (speedMps || 0) * 3.6
+  return `${kmh.toFixed(1)} km/h`
 }
 
 function getSavedWalks() {
@@ -138,14 +163,19 @@ function App() {
   const [position, setPosition] = useState(null)
   const [path, setPath] = useState([])
   const [isTracking, setIsTracking] = useState(false)
+  const [isPaused, setIsPaused] = useState(false)
   const [error, setError] = useState('')
   const [savedWalks, setSavedWalks] = useState([])
   const [currentWalk, setCurrentWalk] = useState(null)
   const [selectedWalkId, setSelectedWalkId] = useState(null)
   const [showHistory, setShowHistory] = useState(false)
+  const [showWalkTypePicker, setShowWalkTypePicker] = useState(false)
+  const [walkType, setWalkType] = useState('promenade-courte')
 
   const watchIdRef = useRef(null)
   const timerRef = useRef(null)
+  const pausedDurationRef = useRef(0)
+  const pauseStartedAtRef = useRef(null)
 
   useEffect(() => {
     const walks = getSavedWalks()
@@ -155,6 +185,11 @@ function App() {
     if (draft) {
       setCurrentWalk(draft)
       setPath(draft.points || [])
+      setWalkType(draft.walkType || 'promenade-courte')
+      setIsPaused(Boolean(draft.isPaused))
+      pausedDurationRef.current = draft.pausedDurationMs || 0
+      pauseStartedAtRef.current = draft.pauseStartedAt || null
+
       if (draft.points?.length) {
         setPosition(draft.points[draft.points.length - 1])
       }
@@ -188,6 +223,11 @@ function App() {
     return savedWalks.reduce((sum, walk) => sum + (walk.durationSec || 0), 0)
   }, [savedWalks])
 
+  const avgDurationPerWalkSec = useMemo(() => {
+    if (savedWalks.length === 0) return 0
+    return totalDurationSec / savedWalks.length
+  }, [savedWalks, totalDurationSec])
+
   const startTracking = () => {
     if (!navigator.geolocation) {
       setError('La géolocalisation n’est pas supportée par ce navigateur.')
@@ -199,6 +239,9 @@ function App() {
     setError('')
     setSelectedWalkId(null)
     setShowHistory(false)
+    setIsPaused(false)
+    pausedDurationRef.current = 0
+    pauseStartedAtRef.current = null
 
     const startedAt = new Date().toISOString()
 
@@ -208,7 +251,13 @@ function App() {
       endedAt: null,
       durationSec: 0,
       distanceMeters: 0,
+      avgSpeedMps: 0,
+      walkType,
+      momentOfDay: getMomentOfDay(startedAt),
       points: [],
+      isPaused: false,
+      pausedDurationMs: 0,
+      pauseStartedAt: null,
     }
 
     setCurrentWalk(newWalk)
@@ -219,13 +268,28 @@ function App() {
       setCurrentWalk((prev) => {
         if (!prev) return prev
 
-        const durationSec = Math.floor(
-          (Date.now() - new Date(prev.startedAt).getTime()) / 1000
-        )
+        if (prev.isPaused) {
+          const pausedDraft = {
+            ...prev,
+            pausedDurationMs: pausedDurationRef.current,
+            pauseStartedAt: pauseStartedAtRef.current,
+          }
+          saveDraftWalk(pausedDraft)
+          return pausedDraft
+        }
+
+        const elapsedMs =
+          Date.now() -
+          new Date(prev.startedAt).getTime() -
+          pausedDurationRef.current
+
+        const durationSec = Math.max(0, Math.floor(elapsedMs / 1000))
 
         const updatedWalk = {
           ...prev,
           durationSec,
+          pausedDurationMs: pausedDurationRef.current,
+          pauseStartedAt: pauseStartedAtRef.current,
         }
 
         saveDraftWalk(updatedWalk)
@@ -242,7 +306,7 @@ function App() {
 
         setCurrentWalk((prev) => {
           if (!prev) return prev
-
+          if (prev.isPaused) return prev
           if (accuracy > 50) return prev
 
           const previousPoint = prev.points[prev.points.length - 1]
@@ -278,6 +342,7 @@ function App() {
         console.error(err)
         setError("Impossible d'obtenir ta position.")
         setIsTracking(false)
+        setIsPaused(false)
 
         if (watchIdRef.current !== null) {
           navigator.geolocation.clearWatch(watchIdRef.current)
@@ -297,7 +362,53 @@ function App() {
     )
   }
 
+  const pauseTracking = () => {
+    if (!isTracking || isPaused) return
+
+    setIsPaused(true)
+    pauseStartedAtRef.current = Date.now()
+
+    setCurrentWalk((prev) => {
+      if (!prev) return prev
+      const updatedWalk = {
+        ...prev,
+        isPaused: true,
+        pauseStartedAt: pauseStartedAtRef.current,
+      }
+      saveDraftWalk(updatedWalk)
+      return updatedWalk
+    })
+  }
+
+  const resumeTracking = () => {
+    if (!isTracking || !isPaused) return
+
+    if (pauseStartedAtRef.current) {
+      pausedDurationRef.current += Date.now() - pauseStartedAtRef.current
+    }
+
+    pauseStartedAtRef.current = null
+    setIsPaused(false)
+
+    setCurrentWalk((prev) => {
+      if (!prev) return prev
+      const updatedWalk = {
+        ...prev,
+        isPaused: false,
+        pausedDurationMs: pausedDurationRef.current,
+        pauseStartedAt: null,
+      }
+      saveDraftWalk(updatedWalk)
+      return updatedWalk
+    })
+  }
+
   const stopTracking = () => {
+    if (isPaused && pauseStartedAtRef.current) {
+      pausedDurationRef.current += Date.now() - pauseStartedAtRef.current
+      pauseStartedAtRef.current = null
+    }
+
     if (watchIdRef.current !== null) {
       navigator.geolocation.clearWatch(watchIdRef.current)
       watchIdRef.current = null
@@ -309,13 +420,34 @@ function App() {
     }
 
     setIsTracking(false)
+    setIsPaused(false)
 
     setCurrentWalk((prev) => {
       if (!prev) return null
 
+      const effectiveDurationSec =
+        prev.durationSec ||
+        Math.max(
+          0,
+          Math.floor(
+            (Date.now() -
+              new Date(prev.startedAt).getTime() -
+              pausedDurationRef.current) /
+              1000
+          )
+        )
+
+      const avgSpeedMps =
+        effectiveDurationSec > 0 ? prev.distanceMeters / effectiveDurationSec : 0
+
       const finishedWalk = {
         ...prev,
         endedAt: new Date().toISOString(),
+        durationSec: effectiveDurationSec,
+        avgSpeedMps,
+        isPaused: false,
+        pausedDurationMs: pausedDurationRef.current,
+        pauseStartedAt: null,
       }
 
       if (finishedWalk.points.length > 0) {
@@ -323,9 +455,20 @@ function App() {
         const updatedWalks = getSavedWalks()
         setSavedWalks(updatedWalks)
         setSelectedWalkId(finishedWalk.id)
+
+        alert(
+          `Promenade enregistrée\n\n${getWalkTypeLabel(
+            finishedWalk.walkType
+          )}\n${finishedWalk.momentOfDay}\n${formatDuration(
+            finishedWalk.durationSec
+          )}\n${(finishedWalk.distanceMeters / 1000).toFixed(2)} km\n${formatSpeed(
+            finishedWalk.avgSpeedMps
+          )}`
+        )
       }
 
       clearDraftWalk()
+      pausedDurationRef.current = 0
       return null
     })
   }
@@ -336,8 +479,11 @@ function App() {
     setPosition(null)
     setError('')
     setCurrentWalk(null)
-    clearDraftWalk()
     setSelectedWalkId(null)
+    setIsPaused(false)
+    pausedDurationRef.current = 0
+    pauseStartedAtRef.current = null
+    clearDraftWalk()
   }
 
   const openWalk = (walk) => {
@@ -414,7 +560,7 @@ function App() {
             ...glassCard,
             pointerEvents: 'auto',
             padding: '12px 16px',
-            maxWidth: '240px',
+            maxWidth: '260px',
           }}
         >
           <div
@@ -437,7 +583,9 @@ function App() {
             }}
           >
             {isTracking
-              ? 'Balade en cours'
+              ? isPaused
+                ? 'Balade en pause'
+                : 'Balade en cours'
               : selectedWalk
               ? 'Balade enregistrée'
               : 'Prêt à partir'}
@@ -458,7 +606,7 @@ function App() {
             whiteSpace: 'nowrap',
           }}
         >
-          {showHistory ? 'Fermer' : `Historique (${savedWalks.length})`}
+          {showHistory ? 'Fermer' : `Carnet (${savedWalks.length})`}
         </button>
       </div>
 
@@ -470,7 +618,7 @@ function App() {
             left: 14,
             right: 14,
             zIndex: 1000,
-            maxHeight: '45vh',
+            maxHeight: '46vh',
             overflowY: 'auto',
             ...glassCard,
             padding: '16px',
@@ -484,7 +632,7 @@ function App() {
               marginBottom: '14px',
             }}
           >
-            Historique
+            Carnet de promenades
           </div>
 
           <div
@@ -504,7 +652,7 @@ function App() {
               }}
             >
               <div style={{ fontSize: '11px', color: COLORS.textSoft, marginBottom: '6px' }}>
-                Balades
+                Promenades
               </div>
               <div style={{ fontSize: '18px', fontWeight: 700, color: COLORS.text }}>
                 {savedWalks.length}
@@ -536,17 +684,17 @@ function App() {
               }}
             >
               <div style={{ fontSize: '11px', color: COLORS.textSoft, marginBottom: '6px' }}>
-                Temps total
+                Durée moyenne
               </div>
               <div style={{ fontSize: '18px', fontWeight: 700, color: COLORS.text }}>
-                {formatDuration(totalDurationSec)}
+                {formatDuration(avgDurationPerWalkSec)}
               </div>
             </div>
           </div>
 
           {savedWalks.length === 0 ? (
             <div style={{ color: COLORS.textSoft, fontSize: '13px' }}>
-              Aucune balade enregistrée pour le moment.
+              Aucune promenade enregistrée pour le moment.
             </div>
           ) : (
             savedWalks.map((walk) => (
@@ -570,7 +718,8 @@ function App() {
                   }}
                 >
                   <div style={{ fontWeight: 700, color: COLORS.text, fontSize: '13px' }}>
-                    {formatDate(walk.startedAt)}
+                    {walk.momentOfDay || getMomentOfDay(walk.startedAt)} —{' '}
+                    {getWalkTypeLabel(walk.walkType)}
                   </div>
                   {selectedWalkId === walk.id && !isTracking && (
                     <div
@@ -588,8 +737,13 @@ function App() {
                   )}
                 </div>
 
+                <div style={{ fontSize: '12px', color: COLORS.textSoft, marginBottom: '6px' }}>
+                  {formatDate(walk.startedAt)}
+                </div>
+
                 <div style={{ fontSize: '12px', color: COLORS.textSoft, marginBottom: '10px' }}>
-                  {formatDuration(walk.durationSec)} — {(walk.distanceMeters / 1000).toFixed(2)} km
+                  {formatDuration(walk.durationSec)} — {(walk.distanceMeters / 1000).toFixed(2)} km —{' '}
+                  {formatSpeed(walk.avgSpeedMps)}
                 </div>
 
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
@@ -626,7 +780,7 @@ function App() {
             position: 'absolute',
             left: 14,
             right: 14,
-            bottom: 178,
+            bottom: 206,
             zIndex: 1000,
             ...glassCard,
             padding: '14px 16px',
@@ -637,6 +791,63 @@ function App() {
           }}
         >
           {error}
+        </div>
+      )}
+
+      {!isTracking && (
+        <div
+          style={{
+            position: 'absolute',
+            left: 14,
+            right: 14,
+            bottom: 186,
+            zIndex: 1000,
+            pointerEvents: 'none',
+          }}
+        >
+          <div
+            style={{
+              ...glassCard,
+              pointerEvents: 'auto',
+              padding: '14px',
+            }}
+          >
+            <div
+              style={{
+                fontSize: '12px',
+                color: COLORS.textSoft,
+                marginBottom: '10px',
+              }}
+            >
+              Type de promenade
+            </div>
+
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              {WALK_TYPES.map((type) => {
+                const active = walkType === type.id
+                return (
+                  <button
+                    key={type.id}
+                    onClick={() => setWalkType(type.id)}
+                    style={{
+                      border: 'none',
+                      borderRadius: '999px',
+                      padding: '10px 12px',
+                      fontSize: '12px',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      fontFamily: FONT_FAMILY,
+                      background: active ? COLORS.accent : COLORS.neutralButton,
+                      color: active ? 'white' : COLORS.neutralButtonText,
+                      boxShadow: active ? '0 8px 18px rgba(252, 76, 2, 0.16)' : 'none',
+                    }}
+                  >
+                    {type.label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
         </div>
       )}
 
@@ -669,10 +880,16 @@ function App() {
             <div>
               <div style={{ fontSize: '11px', color: COLORS.textSoft, marginBottom: '6px' }}>
                 {isTracking
-                  ? 'Session active'
+                  ? isPaused
+                    ? 'Session en pause'
+                    : `${getMomentOfDay(currentWalk?.startedAt || new Date().toISOString())} — ${getWalkTypeLabel(
+                        currentWalk?.walkType || walkType
+                      )}`
                   : selectedWalk
-                  ? 'Dernière balade affichée'
-                  : 'Nouvelle sortie'}
+                  ? `${selectedWalk.momentOfDay || getMomentOfDay(selectedWalk.startedAt)} — ${getWalkTypeLabel(
+                      selectedWalk.walkType
+                    )}`
+                  : `${getMomentOfDay(new Date().toISOString())} — ${getWalkTypeLabel(walkType)}`}
               </div>
 
               <div
@@ -694,7 +911,7 @@ function App() {
 
             <div style={{ textAlign: 'right' }}>
               <div style={{ fontSize: '11px', color: COLORS.textSoft, marginBottom: '6px' }}>
-                Distance
+                {isTracking ? 'Distance' : selectedWalk ? 'Distance' : 'Vitesse moy.'}
               </div>
               <div
                 style={{
@@ -705,10 +922,45 @@ function App() {
                   letterSpacing: '-0.04em',
                 }}
               >
-                {isTracking ? mainDistanceKm : selectedWalk ? selectedDistanceKm : '0.00'} km
+                {isTracking
+                  ? `${mainDistanceKm} km`
+                  : selectedWalk
+                  ? `${selectedDistanceKm} km`
+                  : '0.0 km/h'}
               </div>
             </div>
           </div>
+
+          {(isTracking || selectedWalk) && (
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                gap: '12px',
+                marginBottom: '12px',
+                fontSize: '12px',
+                color: COLORS.textSoft,
+              }}
+            >
+              <div>
+                Vitesse moy. :{' '}
+                {isTracking
+                  ? formatSpeed(
+                      currentWalk?.durationSec > 0
+                        ? (currentWalk.distanceMeters || 0) / currentWalk.durationSec
+                        : 0
+                    )
+                  : selectedWalk
+                  ? formatSpeed(selectedWalk.avgSpeedMps)
+                  : '0.0 km/h'}
+              </div>
+              {isTracking && (
+                <div style={{ color: isPaused ? COLORS.accentDark : COLORS.textSoft }}>
+                  {isPaused ? 'Pause active' : 'Enregistrement en cours'}
+                </div>
+              )}
+            </div>
+          )}
 
           <div style={{ display: 'flex', gap: '10px', marginBottom: !isTracking ? '10px' : 0 }}>
             {!isTracking ? (
@@ -731,24 +983,64 @@ function App() {
                 Démarrer la balade
               </button>
             ) : (
-              <button
-                onClick={stopTracking}
-                style={{
-                  width: '100%',
-                  border: 'none',
-                  borderRadius: '18px',
-                  padding: '18px',
-                  fontSize: '17px',
-                  fontWeight: 700,
-                  background: '#111111',
-                  color: 'white',
-                  boxShadow: '0 10px 24px rgba(17, 17, 17, 0.18)',
-                  cursor: 'pointer',
-                  fontFamily: FONT_FAMILY,
-                }}
-              >
-                Arrêter
-              </button>
+              <>
+                {!isPaused ? (
+                  <button
+                    onClick={pauseTracking}
+                    style={{
+                      flex: 1,
+                      border: 'none',
+                      borderRadius: '18px',
+                      padding: '18px',
+                      fontSize: '16px',
+                      fontWeight: 700,
+                      background: COLORS.neutralButton,
+                      color: COLORS.neutralButtonText,
+                      cursor: 'pointer',
+                      fontFamily: FONT_FAMILY,
+                    }}
+                  >
+                    Pause
+                  </button>
+                ) : (
+                  <button
+                    onClick={resumeTracking}
+                    style={{
+                      flex: 1,
+                      border: 'none',
+                      borderRadius: '18px',
+                      padding: '18px',
+                      fontSize: '16px',
+                      fontWeight: 700,
+                      background: COLORS.accentSoft,
+                      color: COLORS.accentDark,
+                      cursor: 'pointer',
+                      fontFamily: FONT_FAMILY,
+                    }}
+                  >
+                    Reprendre
+                  </button>
+                )}
+
+                <button
+                  onClick={stopTracking}
+                  style={{
+                    flex: 1,
+                    border: 'none',
+                    borderRadius: '18px',
+                    padding: '18px',
+                    fontSize: '16px',
+                    fontWeight: 700,
+                    background: '#111111',
+                    color: 'white',
+                    boxShadow: '0 10px 24px rgba(17, 17, 17, 0.18)',
+                    cursor: 'pointer',
+                    fontFamily: FONT_FAMILY,
+                  }}
+                >
+                  Arrêter
+                </button>
+              </>
             )}
           </div>
 
@@ -787,7 +1079,7 @@ function App() {
                   fontFamily: FONT_FAMILY,
                 }}
               >
-                {showHistory ? 'Masquer l’historique' : 'Voir l’historique'}
+                {showHistory ? 'Masquer le carnet' : 'Voir le carnet'}
               </button>
             </div>
           )}
