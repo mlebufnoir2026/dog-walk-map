@@ -572,7 +572,7 @@ function App() {
               textTransform: 'uppercase',
             }}
           >
-            🐾 Dog Walk Map 🐶
+            🐾 The Dog Walk Map 🐕
           </div>
           <div
             style={{
@@ -588,7 +588,7 @@ function App() {
                 : 'Balade en cours'
               : selectedWalk
               ? 'Balade enregistrée'
-              : '🐕 Prêt à partir'}
+              : 'On sort ? 🐶'}
           </div>
         </div>
 
@@ -980,7 +980,7 @@ function App() {
                   fontFamily: FONT_FAMILY,
                 }}
               >
-                ▶️ Démarrer la promenade
+                ▶ Démarrer la promenade
               </button>
             ) : (
               <>
