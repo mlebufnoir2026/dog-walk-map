@@ -12,16 +12,35 @@ import 'leaflet/dist/leaflet.css'
 const STORAGE_KEY = 'dogwalk_saved_walks'
 const DRAFT_KEY = 'dogwalk_current_walk'
 
+const COLORS = {
+  bg: 'rgba(255,255,255,0.88)',
+  bgStrong: 'rgba(255,255,255,0.94)',
+  border: 'rgba(15, 23, 42, 0.07)',
+  text: '#111111',
+  textSoft: '#6b7280',
+  textMuted: '#8b8b8b',
+  accent: '#fc4c02',
+  accentDark: '#e64600',
+  accentSoft: '#fff1eb',
+  neutralButton: '#f3f4f6',
+  neutralButtonText: '#1f2937',
+  dangerSoft: '#fef2f2',
+  dangerText: '#991b1b',
+  line: '#fc4c02',
+}
+
+const FONT_FAMILY = "'Sometype Mono', monospace"
+
 const userIcon = L.divIcon({
   className: '',
   html: `
     <div style="
       width: 18px;
       height: 18px;
-      background: #2563eb;
+      background: #111111;
       border: 3px solid white;
       border-radius: 50%;
-      box-shadow: 0 0 0 8px rgba(37, 99, 235, 0.18);
+      box-shadow: 0 0 0 8px rgba(17, 17, 17, 0.10);
     "></div>
   `,
   iconSize: [18, 18],
@@ -345,27 +364,37 @@ function App() {
   const selectedDistanceKm = ((selectedWalk?.distanceMeters || 0) / 1000).toFixed(2)
 
   const glassCard = {
-    background: 'rgba(255,255,255,0.88)',
-    backdropFilter: 'blur(14px)',
-    WebkitBackdropFilter: 'blur(14px)',
-    border: '1px solid rgba(255,255,255,0.55)',
-    boxShadow: '0 10px 30px rgba(15, 23, 42, 0.16)',
-    borderRadius: '22px',
+    background: COLORS.bg,
+    backdropFilter: 'blur(18px)',
+    WebkitBackdropFilter: 'blur(18px)',
+    border: `1px solid ${COLORS.border}`,
+    boxShadow: '0 10px 30px rgba(17, 17, 17, 0.08)',
+    borderRadius: '24px',
+    fontFamily: FONT_FAMILY,
   }
 
   const smallButton = {
     border: 'none',
     borderRadius: '14px',
-    padding: '10px 14px',
-    fontSize: '14px',
+    padding: '11px 14px',
+    fontSize: '13px',
     fontWeight: 600,
-    background: '#eef2ff',
-    color: '#1e3a8a',
+    background: COLORS.neutralButton,
+    color: COLORS.neutralButtonText,
     cursor: 'pointer',
+    fontFamily: FONT_FAMILY,
   }
 
   return (
-    <div style={{ height: '100vh', width: '100%', position: 'relative', overflow: 'hidden' }}>
+    <div
+      style={{
+        height: '100vh',
+        width: '100%',
+        position: 'relative',
+        overflow: 'hidden',
+        fontFamily: FONT_FAMILY,
+      }}
+    >
       <div
         style={{
           position: 'absolute',
@@ -377,21 +406,41 @@ function App() {
           justifyContent: 'space-between',
           alignItems: 'flex-start',
           pointerEvents: 'none',
+          gap: '12px',
         }}
       >
         <div
           style={{
             ...glassCard,
             pointerEvents: 'auto',
-            padding: '10px 14px',
+            padding: '12px 16px',
             maxWidth: '240px',
           }}
         >
-          <div style={{ fontSize: '12px', color: '#475569', marginBottom: '4px' }}>
+          <div
+            style={{
+              fontSize: '11px',
+              color: COLORS.textSoft,
+              marginBottom: '6px',
+              letterSpacing: '0.04em',
+              textTransform: 'uppercase',
+            }}
+          >
             Dog Walk Map
           </div>
-          <div style={{ fontSize: '18px', fontWeight: 700, color: '#0f172a' }}>
-            {isTracking ? 'Balade en cours' : selectedWalk ? 'Balade enregistrée' : 'Prêt à partir'}
+          <div
+            style={{
+              fontSize: '18px',
+              fontWeight: 700,
+              color: COLORS.text,
+              lineHeight: 1.15,
+            }}
+          >
+            {isTracking
+              ? 'Balade en cours'
+              : selectedWalk
+              ? 'Balade enregistrée'
+              : 'Prêt à partir'}
           </div>
         </div>
 
@@ -401,11 +450,12 @@ function App() {
             ...glassCard,
             pointerEvents: 'auto',
             border: 'none',
-            padding: '12px 16px',
+            padding: '14px 18px',
             fontSize: '14px',
             fontWeight: 700,
-            color: '#0f172a',
+            color: COLORS.text,
             cursor: 'pointer',
+            whiteSpace: 'nowrap',
           }}
         >
           {showHistory ? 'Fermer' : `Historique (${savedWalks.length})`}
@@ -416,11 +466,11 @@ function App() {
         <div
           style={{
             position: 'absolute',
-            top: 74,
+            top: 78,
             left: 14,
             right: 14,
             zIndex: 1000,
-            maxHeight: '42vh',
+            maxHeight: '45vh',
             overflowY: 'auto',
             ...glassCard,
             padding: '16px',
@@ -428,9 +478,9 @@ function App() {
         >
           <div
             style={{
-              fontSize: '18px',
+              fontSize: '17px',
               fontWeight: 700,
-              color: '#0f172a',
+              color: COLORS.text,
               marginBottom: '14px',
             }}
           >
@@ -447,52 +497,55 @@ function App() {
           >
             <div
               style={{
-                background: 'rgba(248,250,252,0.95)',
+                background: COLORS.bgStrong,
                 borderRadius: '16px',
                 padding: '12px',
+                border: `1px solid ${COLORS.border}`,
               }}
             >
-              <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>
+              <div style={{ fontSize: '11px', color: COLORS.textSoft, marginBottom: '6px' }}>
                 Balades
               </div>
-              <div style={{ fontSize: '20px', fontWeight: 700, color: '#0f172a' }}>
+              <div style={{ fontSize: '18px', fontWeight: 700, color: COLORS.text }}>
                 {savedWalks.length}
               </div>
             </div>
 
             <div
               style={{
-                background: 'rgba(248,250,252,0.95)',
+                background: COLORS.bgStrong,
                 borderRadius: '16px',
                 padding: '12px',
+                border: `1px solid ${COLORS.border}`,
               }}
             >
-              <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>
+              <div style={{ fontSize: '11px', color: COLORS.textSoft, marginBottom: '6px' }}>
                 Distance totale
               </div>
-              <div style={{ fontSize: '20px', fontWeight: 700, color: '#0f172a' }}>
+              <div style={{ fontSize: '18px', fontWeight: 700, color: COLORS.text }}>
                 {(totalDistanceMeters / 1000).toFixed(2)} km
               </div>
             </div>
 
             <div
               style={{
-                background: 'rgba(248,250,252,0.95)',
+                background: COLORS.bgStrong,
                 borderRadius: '16px',
                 padding: '12px',
+                border: `1px solid ${COLORS.border}`,
               }}
             >
-              <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>
+              <div style={{ fontSize: '11px', color: COLORS.textSoft, marginBottom: '6px' }}>
                 Temps total
               </div>
-              <div style={{ fontSize: '20px', fontWeight: 700, color: '#0f172a' }}>
+              <div style={{ fontSize: '18px', fontWeight: 700, color: COLORS.text }}>
                 {formatDuration(totalDurationSec)}
               </div>
             </div>
           </div>
 
           {savedWalks.length === 0 ? (
-            <div style={{ color: '#475569', fontSize: '14px' }}>
+            <div style={{ color: COLORS.textSoft, fontSize: '13px' }}>
               Aucune balade enregistrée pour le moment.
             </div>
           ) : (
@@ -500,8 +553,8 @@ function App() {
               <div
                 key={walk.id}
                 style={{
-                  background: 'rgba(255,255,255,0.7)',
-                  border: '1px solid rgba(226,232,240,0.9)',
+                  background: 'rgba(255,255,255,0.72)',
+                  border: `1px solid ${COLORS.border}`,
                   borderRadius: '18px',
                   padding: '14px',
                   marginBottom: '10px',
@@ -516,16 +569,16 @@ function App() {
                     marginBottom: '8px',
                   }}
                 >
-                  <div style={{ fontWeight: 700, color: '#0f172a', fontSize: '14px' }}>
+                  <div style={{ fontWeight: 700, color: COLORS.text, fontSize: '13px' }}>
                     {formatDate(walk.startedAt)}
                   </div>
                   {selectedWalkId === walk.id && !isTracking && (
                     <div
                       style={{
-                        fontSize: '12px',
+                        fontSize: '11px',
                         fontWeight: 700,
-                        color: '#1d4ed8',
-                        background: '#dbeafe',
+                        color: COLORS.accentDark,
+                        background: COLORS.accentSoft,
                         padding: '6px 10px',
                         borderRadius: '999px',
                       }}
@@ -535,20 +588,27 @@ function App() {
                   )}
                 </div>
 
-                <div style={{ fontSize: '13px', color: '#475569', marginBottom: '10px' }}>
+                <div style={{ fontSize: '12px', color: COLORS.textSoft, marginBottom: '10px' }}>
                   {formatDuration(walk.durationSec)} — {(walk.distanceMeters / 1000).toFixed(2)} km
                 </div>
 
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                  <button onClick={() => openWalk(walk)} style={smallButton}>
+                  <button
+                    onClick={() => openWalk(walk)}
+                    style={{
+                      ...smallButton,
+                      background: COLORS.accentSoft,
+                      color: COLORS.accentDark,
+                    }}
+                  >
                     Voir le tracé
                   </button>
                   <button
                     onClick={() => deleteWalk(walk.id)}
                     style={{
                       ...smallButton,
-                      background: '#fef2f2',
-                      color: '#b91c1c',
+                      background: COLORS.dangerSoft,
+                      color: COLORS.dangerText,
                     }}
                   >
                     Supprimer
@@ -566,13 +626,14 @@ function App() {
             position: 'absolute',
             left: 14,
             right: 14,
-            bottom: 170,
+            bottom: 178,
             zIndex: 1000,
             ...glassCard,
             padding: '14px 16px',
-            color: '#991b1b',
-            background: 'rgba(254,242,242,0.93)',
-            border: '1px solid rgba(252,165,165,0.6)',
+            color: COLORS.dangerText,
+            background: 'rgba(254,242,242,0.95)',
+            border: '1px solid rgba(252,165,165,0.55)',
+            fontSize: '13px',
           }}
         >
           {error}
@@ -593,7 +654,7 @@ function App() {
           style={{
             ...glassCard,
             pointerEvents: 'auto',
-            padding: '16px',
+            padding: '18px',
           }}
         >
           <div
@@ -602,15 +663,27 @@ function App() {
               justifyContent: 'space-between',
               gap: '12px',
               alignItems: 'flex-start',
-              marginBottom: '14px',
+              marginBottom: '16px',
             }}
           >
             <div>
-              <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '6px' }}>
-                {isTracking ? 'Session active' : selectedWalk ? 'Dernière balade affichée' : 'Nouvelle sortie'}
+              <div style={{ fontSize: '11px', color: COLORS.textSoft, marginBottom: '6px' }}>
+                {isTracking
+                  ? 'Session active'
+                  : selectedWalk
+                  ? 'Dernière balade affichée'
+                  : 'Nouvelle sortie'}
               </div>
 
-              <div style={{ fontSize: '28px', fontWeight: 800, color: '#0f172a', lineHeight: 1 }}>
+              <div
+                style={{
+                  fontSize: '28px',
+                  fontWeight: 700,
+                  color: COLORS.text,
+                  lineHeight: 1,
+                  letterSpacing: '-0.04em',
+                }}
+              >
                 {isTracking
                   ? formatDuration(currentWalk?.durationSec || 0)
                   : selectedWalk
@@ -620,10 +693,18 @@ function App() {
             </div>
 
             <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '6px' }}>
+              <div style={{ fontSize: '11px', color: COLORS.textSoft, marginBottom: '6px' }}>
                 Distance
               </div>
-              <div style={{ fontSize: '28px', fontWeight: 800, color: '#0f172a', lineHeight: 1 }}>
+              <div
+                style={{
+                  fontSize: '28px',
+                  fontWeight: 700,
+                  color: COLORS.text,
+                  lineHeight: 1,
+                  letterSpacing: '-0.04em',
+                }}
+              >
                 {isTracking ? mainDistanceKm : selectedWalk ? selectedDistanceKm : '0.00'} km
               </div>
             </div>
@@ -639,11 +720,12 @@ function App() {
                   borderRadius: '18px',
                   padding: '18px',
                   fontSize: '17px',
-                  fontWeight: 800,
-                  background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
+                  fontWeight: 700,
+                  background: `linear-gradient(135deg, ${COLORS.accent} 0%, ${COLORS.accentDark} 100%)`,
                   color: 'white',
-                  boxShadow: '0 10px 24px rgba(37, 99, 235, 0.35)',
+                  boxShadow: '0 10px 24px rgba(252, 76, 2, 0.22)',
                   cursor: 'pointer',
+                  fontFamily: FONT_FAMILY,
                 }}
               >
                 Démarrer la balade
@@ -657,11 +739,12 @@ function App() {
                   borderRadius: '18px',
                   padding: '18px',
                   fontSize: '17px',
-                  fontWeight: 800,
-                  background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                  fontWeight: 700,
+                  background: '#111111',
                   color: 'white',
-                  boxShadow: '0 10px 24px rgba(239, 68, 68, 0.28)',
+                  boxShadow: '0 10px 24px rgba(17, 17, 17, 0.18)',
                   cursor: 'pointer',
+                  fontFamily: FONT_FAMILY,
                 }}
               >
                 Arrêter
@@ -678,11 +761,12 @@ function App() {
                   border: 'none',
                   borderRadius: '14px',
                   padding: '13px',
-                  fontSize: '14px',
+                  fontSize: '13px',
                   fontWeight: 700,
-                  background: '#f8fafc',
-                  color: '#334155',
+                  background: COLORS.neutralButton,
+                  color: COLORS.neutralButtonText,
                   cursor: 'pointer',
+                  fontFamily: FONT_FAMILY,
                 }}
               >
                 Réinitialiser
@@ -695,11 +779,12 @@ function App() {
                   border: 'none',
                   borderRadius: '14px',
                   padding: '13px',
-                  fontSize: '14px',
+                  fontSize: '13px',
                   fontWeight: 700,
-                  background: '#eff6ff',
-                  color: '#1d4ed8',
+                  background: COLORS.accentSoft,
+                  color: COLORS.accentDark,
                   cursor: 'pointer',
+                  fontFamily: FONT_FAMILY,
                 }}
               >
                 {showHistory ? 'Masquer l’historique' : 'Voir l’historique'}
@@ -717,7 +802,8 @@ function App() {
       >
         <TileLayer
           attribution='&copy; OpenStreetMap contributors &copy; CARTO'
-          url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"        />
+          url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+        />
 
         {position && <RecenterMap position={position} isTracking={isTracking} />}
 
@@ -727,9 +813,9 @@ function App() {
           <Polyline
             positions={displayedPath}
             pathOptions={{
-              color: '#2563eb',
+              color: COLORS.line,
               weight: 6,
-              opacity: 0.95,
+              opacity: 0.96,
               lineCap: 'round',
               lineJoin: 'round',
             }}
