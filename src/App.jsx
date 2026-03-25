@@ -33,10 +33,10 @@ const COLORS = {
 const FONT_FAMILY = "'Sometype Mono', monospace"
 
 const WALK_TYPES = [
-  { id: 'promenade-courte', label: 'Promenade courte' },
-  { id: 'sortie-longue', label: 'Sortie longue' },
-  { id: 'cafe-terrasse', label: 'Café / terrasse' },
-  { id: 'parc', label: 'Parc' },
+  { id: 'promenade-courte', label: '🚶‍♂️ Promenade courte' },
+  { id: 'sortie-longue', label: '🥾 Sortie longue' },
+  { id: 'cafe-terrasse', label: '☕ Café / terrasse' },
+  { id: 'parc', label: '🌳 Parc' },
 ]
 
 const userIcon = L.divIcon({
@@ -572,7 +572,7 @@ function App() {
               textTransform: 'uppercase',
             }}
           >
-            Dog Walk Map
+            🐾 Dog Walk Map 🐶
           </div>
           <div
             style={{
@@ -588,7 +588,7 @@ function App() {
                 : 'Balade en cours'
               : selectedWalk
               ? 'Balade enregistrée'
-              : 'Prêt à partir'}
+              : '🐕 Prêt à partir'}
           </div>
         </div>
 
@@ -606,7 +606,7 @@ function App() {
             whiteSpace: 'nowrap',
           }}
         >
-          {showHistory ? 'Fermer' : `Carnet (${savedWalks.length})`}
+          {showHistory ? 'Fermer' : `📝 Carnet (${savedWalks.length})`}
         </button>
       </div>
 
@@ -632,7 +632,7 @@ function App() {
               marginBottom: '14px',
             }}
           >
-            Carnet de promenades
+            📝 Carnet de promenades 
           </div>
 
           <div
@@ -800,7 +800,7 @@ function App() {
             position: 'absolute',
             left: 14,
             right: 14,
-            bottom: 186,
+            bottom: 350,
             zIndex: 1000,
             pointerEvents: 'none',
           }}
@@ -980,7 +980,7 @@ function App() {
                   fontFamily: FONT_FAMILY,
                 }}
               >
-                Démarrer la balade
+                ▶️ Démarrer la promenade
               </button>
             ) : (
               <>
