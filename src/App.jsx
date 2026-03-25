@@ -228,7 +228,7 @@ function App() {
     return totalDurationSec / savedWalks.length
   }, [savedWalks, totalDurationSec])
 
-  const startTracking = () => {
+  const startTracking = (forcedWalkType) => {
     if (!navigator.geolocation) {
       setError('La géolocalisation n’est pas supportée par ce navigateur.')
       return
@@ -236,9 +236,12 @@ function App() {
 
     if (watchIdRef.current !== null) return
 
+    const chosenWalkType = forcedWalkType || walkType
+
     setError('')
     setSelectedWalkId(null)
     setShowHistory(false)
+    setShowWalkTypePicker(false)
     setIsPaused(false)
     pausedDurationRef.current = 0
     pauseStartedAtRef.current = null
@@ -252,7 +255,7 @@ function App() {
       durationSec: 0,
       distanceMeters: 0,
       avgSpeedMps: 0,
-      walkType,
+      walkType: chosenWalkType,
       momentOfDay: getMomentOfDay(startedAt),
       points: [],
       isPaused: false,
@@ -343,6 +346,7 @@ function App() {
         setError("Impossible d'obtenir ta position.")
         setIsTracking(false)
         setIsPaused(false)
+        setShowWalkTypePicker(false)
 
         if (watchIdRef.current !== null) {
           navigator.geolocation.clearWatch(watchIdRef.current)
@@ -360,6 +364,21 @@ function App() {
         timeout: 10000,
       }
     )
+  }
+
+  const openWalkTypePicker = () => {
+    setShowHistory(false)
+    setSelectedWalkId(null)
+    setShowWalkTypePicker(true)
+  }
+
+  const selectWalkTypeAndStart = (typeId) => {
+    setWalkType(typeId)
+    startTracking(typeId)
+  }
+
+  const cancelWalkTypePicker = () => {
+    setShowWalkTypePicker(false)
   }
 
   const pauseTracking = () => {
@@ -421,6 +440,7 @@ function App() {
 
     setIsTracking(false)
     setIsPaused(false)
+    setShowWalkTypePicker(false)
 
     setCurrentWalk((prev) => {
       if (!prev) return null
@@ -481,6 +501,7 @@ function App() {
     setCurrentWalk(null)
     setSelectedWalkId(null)
     setIsPaused(false)
+    setShowWalkTypePicker(false)
     pausedDurationRef.current = 0
     pauseStartedAtRef.current = null
     clearDraftWalk()
@@ -493,6 +514,7 @@ function App() {
       setPosition(walk.points[walk.points.length - 1])
     }
     setShowHistory(false)
+    setShowWalkTypePicker(false)
   }
 
   const deleteWalk = (id) => {
@@ -588,12 +610,17 @@ function App() {
                 : 'Balade en cours'
               : selectedWalk
               ? 'Balade enregistrée'
+              : showWalkTypePicker
+              ? 'Choisir le type'
               : 'On sort ? 🐶'}
           </div>
         </div>
 
         <button
-          onClick={() => setShowHistory((prev) => !prev)}
+          onClick={() => {
+            setShowWalkTypePicker(false)
+            setShowHistory((prev) => !prev)
+          }}
           style={{
             ...glassCard,
             pointerEvents: 'auto',
@@ -632,7 +659,7 @@ function App() {
               marginBottom: '14px',
             }}
           >
-            📝 Carnet de promenades 
+            📝 Carnet de promenades
           </div>
 
           <div
@@ -780,7 +807,7 @@ function App() {
             position: 'absolute',
             left: 14,
             right: 14,
-            bottom: 206,
+            bottom: showWalkTypePicker ? 316 : 206,
             zIndex: 1000,
             ...glassCard,
             padding: '14px 16px',
@@ -794,13 +821,13 @@ function App() {
         </div>
       )}
 
-      {!isTracking && (
+      {!isTracking && showWalkTypePicker && (
         <div
           style={{
             position: 'absolute',
             left: 14,
             right: 14,
-            bottom: 350,
+            bottom: 186,
             zIndex: 1000,
             pointerEvents: 'none',
           }}
@@ -822,13 +849,13 @@ function App() {
               Type de promenade
             </div>
 
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' }}>
               {WALK_TYPES.map((type) => {
                 const active = walkType === type.id
                 return (
                   <button
                     key={type.id}
-                    onClick={() => setWalkType(type.id)}
+                    onClick={() => selectWalkTypeAndStart(type.id)}
                     style={{
                       border: 'none',
                       borderRadius: '999px',
@@ -847,6 +874,24 @@ function App() {
                 )
               })}
             </div>
+
+            <button
+              onClick={cancelWalkTypePicker}
+              style={{
+                width: '100%',
+                border: 'none',
+                borderRadius: '14px',
+                padding: '12px',
+                fontSize: '13px',
+                fontWeight: 700,
+                background: COLORS.neutralButton,
+                color: COLORS.neutralButtonText,
+                cursor: 'pointer',
+                fontFamily: FONT_FAMILY,
+              }}
+            >
+              Annuler
+            </button>
           </div>
         </div>
       )}
@@ -889,7 +934,9 @@ function App() {
                   ? `${selectedWalk.momentOfDay || getMomentOfDay(selectedWalk.startedAt)} — ${getWalkTypeLabel(
                       selectedWalk.walkType
                     )}`
-                  : `${getMomentOfDay(new Date().toISOString())} — ${getWalkTypeLabel(walkType)}`}
+                  : showWalkTypePicker
+                  ? 'Choisis un type pour démarrer'
+                  : 'Prêt à lancer une promenade'}
               </div>
 
               <div
@@ -965,7 +1012,7 @@ function App() {
           <div style={{ display: 'flex', gap: '10px', marginBottom: !isTracking ? '10px' : 0 }}>
             {!isTracking ? (
               <button
-                onClick={startTracking}
+                onClick={openWalkTypePicker}
                 style={{
                   width: '100%',
                   border: 'none',
@@ -1065,7 +1112,10 @@ function App() {
               </button>
 
               <button
-                onClick={() => setShowHistory((prev) => !prev)}
+                onClick={() => {
+                  setShowWalkTypePicker(false)
+                  setShowHistory((prev) => !prev)
+                }}
                 style={{
                   flex: 1,
                   border: 'none',
