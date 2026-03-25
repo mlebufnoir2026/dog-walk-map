@@ -377,6 +377,7 @@ function App() {
           justifyContent: 'space-between',
           alignItems: 'flex-start',
           pointerEvents: 'none',
+          fontFamily: monoFont,
         }}
       >
         <div
@@ -587,6 +588,7 @@ function App() {
           bottom: 14,
           zIndex: 1000,
           pointerEvents: 'none',
+          fontFamily: monoFont,
         }}
       >
         <div
