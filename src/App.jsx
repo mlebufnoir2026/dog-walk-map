@@ -1144,7 +1144,7 @@ function App() {
       >
         <TileLayer
           attribution='&copy; OpenStreetMap contributors &copy; CARTO'
-          url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+          url="https://basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}{r}.png?key=cb1_4uwk_1_3edbdf2f67012a7a3e1b2156"
         />
 
         {position && <RecenterMap position={position} isTracking={isTracking} />}
